@@ -71,7 +71,11 @@ func NewApp(f Handler, listenPort int, peerHost string, peerPort int, poolInit i
   factory := func() (interface{}, error) {
     log.Tracef("Connecting to %s:%d", app.PeerHost, app.PeerPort)
     conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", app.PeerHost, app.PeerPort))
-    pingFunc(conn)
+    if err == nil {
+      pingFunc(conn)
+    } else {
+      log.Errorf("Error connecting to %s:%d", app.PeerHost, app.PeerPort)
+    }
     return conn, err
   }
   close := func(v interface{}) error { return v.(net.Conn).Close() }
