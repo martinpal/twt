@@ -247,7 +247,7 @@ func handleConnection(conn net.Conn) {
       }
       handleProxycommMessage(message)
     } else {
-      log.Fatalf("Error receiving protobuf message, expected %4d, got %4d", length, len(B))
+      log.Errorf("Error receiving protobuf message, expected %4d, got %4d", length, len(B))
     }
   }
   return
@@ -342,7 +342,7 @@ func handleProxycommMessage(message *ProxyComm) {
 }
 
 func newConnection(message *ProxyComm) {
-  log.Debugf("Openning connection %4d to %s:%d", message.Connection, message.Address, message.Port)
+  log.Infof("Openning connection %4d to %s:%d", message.Connection, message.Address, message.Port)
   conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", message.Address, message.Port))
   if err != nil {
     log.Fatal(err)
@@ -382,7 +382,7 @@ func backwardDataChunk(message *ProxyComm) {
   app.LocalConnections[message.Connection] = thisConnection
   n, err := thisConnection.Connection.Write(message.Data)
   if err != nil {
-    log.Warnf("Error forwarding data chunk downward for connection %4d, seq %8d, length %5d, %v", message.Connection, message.Seq, len(message.Data), err)
+    log.Debugf("Error forwarding data chunk downward for connection %4d, seq %8d, length %5d, %v", message.Connection, message.Seq, len(message.Data), err)
     return
   }
   log.Debugf("Succesfully forwarded data chunk downward for connection %4d, seq %8d, length %5d, sent %5d", message.Connection, message.Seq, len(message.Data), n)
@@ -395,7 +395,7 @@ func forwardDataChunk(message *ProxyComm) {
   remoteConnections[message.Connection] = thisConnection
   n, err := thisConnection.Connection.Write(message.Data)
   if err != nil {
-    log.Warnf("Error forwarding data chunk   upward for connection %4d, seq %8d, length %5d, %v", message.Connection, message.Seq, len(message.Data), err)
+    log.Debugf("Error forwarding data chunk   upward for connection %4d, seq %8d, length %5d, %v", message.Connection, message.Seq, len(message.Data), err)
   }
   log.Debugf("Succesfully forwarded data chunk   upward for connection %4d, seq %8d, length %5d, sent %5d", message.Connection, message.Seq, len(message.Data), n)
   remoteConnections[message.Connection] = thisConnection
