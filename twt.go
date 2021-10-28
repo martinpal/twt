@@ -121,7 +121,7 @@ func Hijack (w http.ResponseWriter, r *http.Request) {
   }
   app.LocalConnectionMutex.Lock()
   thisConnection := app.LastLocalConnection
-  app.LastLocalConnection += 1
+  app.LastLocalConnection++
   app.LocalConnections[thisConnection] = Connection { Connection: conn, LastSeqIn: 0, MessageQueue: make(map[uint64]ProxyComm) }
   app.LocalConnectionMutex.Unlock()
 
@@ -142,7 +142,7 @@ func Hijack (w http.ResponseWriter, r *http.Request) {
       log.Infof("Error reading local connection: %v, going to send CLOSE_CONN_S message to remote end", err)
       app.LocalConnectionMutex.Lock()
       connrecord := app.LocalConnections[thisConnection]
-      connrecord.LastSeqIn += 1
+      connrecord.LastSeqIn++
       app.LocalConnections[thisConnection] = connrecord
       app.LocalConnectionMutex.Unlock()
       closemessage := &ProxyComm {
@@ -159,7 +159,7 @@ func Hijack (w http.ResponseWriter, r *http.Request) {
       log.Tracef("%s", hex.Dump(b[:n]))
       app.LocalConnectionMutex.Lock()
       connrecord := app.LocalConnections[thisConnection]
-      connrecord.LastSeqIn += 1
+      connrecord.LastSeqIn++
       app.LocalConnections[thisConnection] = connrecord
       app.LocalConnectionMutex.Unlock()
       datamessage := &ProxyComm {
@@ -336,7 +336,7 @@ func handleProxycommMessage(message *ProxyComm) {
         forwardDataChunk(&queueMessage)
     }
     delete((*connections)[queueMessage.Connection].MessageQueue, seq)
-    seq += 1
+    seq++
     queueMessage, ok = thisConnection.MessageQueue[seq]
   }
   mutex.Unlock()
@@ -379,7 +379,7 @@ func closeConnectionLocal(message *ProxyComm) {
 func backwardDataChunk(message *ProxyComm) {
 //  log.Tracef("DATA_DOWN %v", message)
   thisConnection := app.LocalConnections[message.Connection]
-  thisConnection.NextSeqOut += 1
+  thisConnection.NextSeqOut++
   app.LocalConnections[message.Connection] = thisConnection
   n, err := thisConnection.Connection.Write(message.Data)
   if err != nil {
@@ -392,7 +392,7 @@ func backwardDataChunk(message *ProxyComm) {
 
 func forwardDataChunk(message *ProxyComm) {
   thisConnection := remoteConnections[message.Connection]
-  thisConnection.NextSeqOut += 1
+  thisConnection.NextSeqOut++
   remoteConnections[message.Connection] = thisConnection
   n, err := thisConnection.Connection.Write(message.Data)
   if err != nil {
@@ -418,7 +418,7 @@ func handleRemoteSideConnection(conn net.Conn, connid uint64) {
           return
         }
         seq := connrecord.LastSeqIn
-        connrecord.LastSeqIn += 1
+        connrecord.LastSeqIn++
         remoteConnections[connid] = connrecord
         remoteConnectionMutex.Unlock()
         closemessage := &ProxyComm {
@@ -429,17 +429,15 @@ func handleRemoteSideConnection(conn net.Conn, connid uint64) {
         }
         sendProtobuf(closemessage)
         return
-      } else {
-        log.Tracef("Error reading remote connection %d: %v, exiting goroutine", connid, err)
-        return
       }
-      continue
+      log.Tracef("Error reading remote connection %d: %v, exiting goroutine", connid, err)
+      return
     }
     log.Tracef("Sending data from remote connection %4d downward, length %5d", connid, n)
     remoteConnectionMutex.Lock()
     connrecord := remoteConnections[connid]
     seq := connrecord.LastSeqIn
-    connrecord.LastSeqIn += 1
+    connrecord.LastSeqIn++
     remoteConnections[connid] = connrecord
     remoteConnectionMutex.Unlock()
     log.Tracef("%s", hex.Dump(b[:n]))
