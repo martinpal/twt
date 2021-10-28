@@ -45,11 +45,11 @@ type App struct {
   LocalConnections map[uint64]Connection
 }
 
-func NewApp(f Handler, listenport int, peerhost string, peerport int, poolinit int, poolcap int, ping bool) *App {
+func NewApp(f Handler, listenPort int, peerHost string, peerPort int, poolInit int, poolCap int, ping bool) *App {
   app := &App{
-    ListenPort: listenport,
-    PeerHost: peerhost,
-    PeerPort: peerport,
+    ListenPort: listenPort,
+    PeerHost: peerHost,
+    PeerPort: peerPort,
     Ping: ping,
     DefaultRoute: f,
     LocalConnections: make(map[uint64]Connection),
@@ -57,31 +57,31 @@ func NewApp(f Handler, listenport int, peerhost string, peerport int, poolinit i
 
   log.Debug("Creating connection pool")
 
-  pingfunc := func(v interface{}) error { return nil }
+  pingFunc := func(v interface{}) error { return nil }
   if ping {
-    pingfunc = func(v interface{}) error {
-      pingmessage := &ProxyComm {
+    pingFunc = func(v interface{}) error {
+      pingMessage := &ProxyComm {
         Mt: ProxyComm_PING,
         Proxy: Proxyid,
       }
-      sendProtobufToConn(v.(net.Conn), pingmessage)
+      sendProtobufToConn(v.(net.Conn), pingMessage)
       return nil
     }
   }
   factory := func() (interface{}, error) {
     log.Tracef("Connecting to %s:%d", app.PeerHost, app.PeerPort)
     conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", app.PeerHost, app.PeerPort))
-    pingfunc(conn)
+    pingFunc(conn)
     return conn, err
   }
   close := func(v interface{}) error { return v.(net.Conn).Close() }
   poolConfig := &pool.Config{
-    InitialCap: poolinit,
-    MaxIdle:    poolcap,
-    MaxCap:     poolcap,
+    InitialCap: poolInit,
+    MaxIdle:    poolCap,
+    MaxCap:     poolCap,
     Factory:    factory,
     Close:      close,
-    Ping:       pingfunc,
+    Ping:       pingFunc,
     IdleTimeout: 15 * 60 * time.Second,
   }
   p, err := pool.NewChannelPool(poolConfig)
@@ -103,9 +103,9 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func Hijack (w http.ResponseWriter, r *http.Request) {
-  parsedhost:= strings.Split(r.Host, ":")
-  host := parsedhost[0]
-  port, _ := strconv.Atoi(parsedhost[1])
+  parsedHost:= strings.Split(r.Host, ":")
+  host := parsedHost[0]
+  port, _ := strconv.Atoi(parsedHost[1])
   log.Infof("Method %s, Host %s:%d\n", r.Method, host, port)
   w.WriteHeader(http.StatusOK)
   hj, ok := w.(http.Hijacker)
@@ -124,7 +124,7 @@ func Hijack (w http.ResponseWriter, r *http.Request) {
   app.LocalConnections[thisConnection] = Connection { Connection: conn, LastSeqIn: 0, MessageQueue: make(map[uint64]ProxyComm) }
   app.LocalConnectionMutex.Unlock()
 
-  connectmessage := &ProxyComm {
+  connectMessage := &ProxyComm {
     Mt: ProxyComm_OPEN_CONN,
     Proxy: Proxyid,
     Connection: thisConnection,
@@ -132,7 +132,7 @@ func Hijack (w http.ResponseWriter, r *http.Request) {
     Address: host,
     Port: uint32(port),
   }
-  sendProtobuf(connectmessage)
+  sendProtobuf(connectMessage)
 
   for {
     b := make([]byte, ChunkSize)
@@ -140,35 +140,35 @@ func Hijack (w http.ResponseWriter, r *http.Request) {
     if err != nil {
       log.Infof("Error reading local connection: %v, going to send CLOSE_CONN_S message to remote end", err)
       app.LocalConnectionMutex.Lock()
-      connrecord := app.LocalConnections[thisConnection]
-      connrecord.LastSeqIn++
-      app.LocalConnections[thisConnection] = connrecord
+      connRecord := app.LocalConnections[thisConnection]
+      connRecord.LastSeqIn++
+      app.LocalConnections[thisConnection] = connRecord
       app.LocalConnectionMutex.Unlock()
-      closemessage := &ProxyComm {
+      closeMessage := &ProxyComm {
         Mt: ProxyComm_CLOSE_CONN_S,
         Proxy: Proxyid,
         Connection: thisConnection,
-        Seq: connrecord.LastSeqIn,
+        Seq: connRecord.LastSeqIn,
       }
-      sendProtobuf(closemessage)
+      sendProtobuf(closeMessage)
       return
     }
     if n > 0 {
       log.Tracef("Read %d bytes, hexdump", n)
       log.Tracef("%s", hex.Dump(b[:n]))
       app.LocalConnectionMutex.Lock()
-      connrecord := app.LocalConnections[thisConnection]
-      connrecord.LastSeqIn++
-      app.LocalConnections[thisConnection] = connrecord
+      connRecord := app.LocalConnections[thisConnection]
+      connRecord.LastSeqIn++
+      app.LocalConnections[thisConnection] = connRecord
       app.LocalConnectionMutex.Unlock()
-      datamessage := &ProxyComm {
+      dataMessage := &ProxyComm {
         Mt: ProxyComm_DATA_UP,
         Proxy: Proxyid,
         Connection: thisConnection,
-        Seq: connrecord.LastSeqIn,
+        Seq: connRecord.LastSeqIn,
         Data: b[:n],
       }
-      sendProtobuf(datamessage)
+      sendProtobuf(dataMessage)
     }
   }
   log.Infof("Close hijacked connection %4d", thisConnection)
@@ -397,66 +397,66 @@ func forwardDataChunk(message *ProxyComm) {
   remoteConnections[message.Connection] = thisConnection
 }
 
-func handleRemoteSideConnection(conn net.Conn, connid uint64) {
-  log.Infof("Starting remote side connection handler for connection %d", connid)
+func handleRemoteSideConnection(conn net.Conn, connId uint64) {
+  log.Infof("Starting remote side connection handler for connection %d", connId)
   for {
     b := make([]byte, ChunkSize)
     n, err := conn.Read(b)
     if err != nil {
       if err == io.EOF {
-        log.Infof("Error reading remote connection %d: %v", connid, err)
+        log.Infof("Error reading remote connection %d: %v", connId, err)
         remoteConnectionMutex.Lock()
-        connrecord, ok := remoteConnections[connid]
+        connRecord, ok := remoteConnections[connId]
         if ! ok {
-          log.Tracef("Connection %d was already closed and removed earlier, exiting goroutine", connid)
+          log.Tracef("Connection %d was already closed and removed earlier, exiting goroutine", connId)
           remoteConnectionMutex.Unlock()
           return
         }
-        seq := connrecord.LastSeqIn
-        connrecord.LastSeqIn++
-        remoteConnections[connid] = connrecord
+        seq := connRecord.LastSeqIn
+        connRecord.LastSeqIn++
+        remoteConnections[connId] = connRecord
         remoteConnectionMutex.Unlock()
-        closemessage := &ProxyComm {
+        closeMessage := &ProxyComm {
           Mt: ProxyComm_CLOSE_CONN_C,
           Proxy: Proxyid,
-          Connection: connid,
+          Connection: connId,
           Seq: seq,
         }
-        sendProtobuf(closemessage)
+        sendProtobuf(closeMessage)
         return
       }
-      log.Tracef("Error reading remote connection %d: %v, exiting goroutine", connid, err)
+      log.Tracef("Error reading remote connection %d: %v, exiting goroutine", connId, err)
       return
     }
-    log.Tracef("Sending data from remote connection %4d downward, length %5d", connid, n)
+    log.Tracef("Sending data from remote connection %4d downward, length %5d", connId, n)
     remoteConnectionMutex.Lock()
-    connrecord := remoteConnections[connid]
-    seq := connrecord.LastSeqIn
-    connrecord.LastSeqIn++
-    remoteConnections[connid] = connrecord
+    connRecord := remoteConnections[connId]
+    seq := connRecord.LastSeqIn
+    connRecord.LastSeqIn++
+    remoteConnections[connId] = connRecord
     remoteConnectionMutex.Unlock()
     log.Tracef("%s", hex.Dump(b[:n]))
     if n == 7 || n == 8 || n == 9 {
       log.Fatalf("Suspect message %s", hex.Dump(b[:n]))
     }
-    datamessage := &ProxyComm {
+    dataMessage := &ProxyComm {
       Mt: ProxyComm_DATA_DOWN,
       Proxy: Proxyid,
-      Connection: connid,
+      Connection: connId,
       Seq: seq,
       Data: b[:n],
     }
-    sendProtobuf(datamessage)
+    sendProtobuf(dataMessage)
   }
 }
 
-func protobufServer(listenport int) {
-  l, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", listenport))
+func protobufServer(listenPort int) {
+  l, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", listenPort))
   if err != nil {
       log.Fatalf("Error listening:", err.Error())
   }
   defer l.Close()
-  log.Infof("Listening on 0.0.0.0:%d", listenport)
+  log.Infof("Listening on 0.0.0.0:%d", listenPort)
   for {
       log.Trace("Listening for an incoming connection")
       conn, err := l.Accept()
@@ -508,20 +508,20 @@ func main() {
 
   logLevel   := flag.Int("L", 2, "Log level. (1) Error, (2) Warn, (3) Info, (4) Debug, (5) Trace")
   proxyport  := flag.Int("l", 3128, "Our http proxy port to listen on")
-  peerhost   := flag.String("h", "127.0.0.1", "Address of the peer host")
-  peerport   := flag.Int("p", 33333, "Port of the peer on peer host")
-  listenport := flag.Int("b", 33333, "Our protobuf port to listen on")
-  poolinit   := flag.Int("i", 100, "Initial size of the connection pool between the ends of tunnel")
-  poolcap    := flag.Int("c", 500, "Cap of the connection pool size")
-  pingpool   := flag.Bool("ping", false, "To ping or not to ping on the connection pool connections")
+  peerHost   := flag.String("h", "127.0.0.1", "Address of the peer host")
+  peerPort   := flag.Int("p", 33333, "Port of the peer on peer host")
+  listenPort := flag.Int("b", 33333, "Our protobuf port to listen on")
+  poolInit   := flag.Int("i", 100, "Initial size of the connection pool between the ends of tunnel")
+  poolCap    := flag.Int("c", 500, "Cap of the connection pool size")
+  pingPool   := flag.Bool("ping", false, "To ping or not to ping on the connection pool connections")
   flag.Parse()
   setLogLevel(logLevel)
   log.Infof("Proxy port %d\n", *proxyport)
-  log.Infof("Peer host:port %s:%d\n", *peerhost, *peerport)
-  log.Infof("Listening port %d\n", *listenport)
-  log.Infof("Initial pool size %d\n", *poolinit)
-  log.Infof("Maximum pool size %d\n", *poolcap)
-  if *pingpool {
+  log.Infof("Peer host:port %s:%d\n", *peerHost, *peerPort)
+  log.Infof("Listening port %d\n", *listenPort)
+  log.Infof("Initial pool size %d\n", *poolInit)
+  log.Infof("Maximum pool size %d\n", *poolCap)
+  if *pingPool {
     log.Info("Will ping connections in pool")
   } else {
     log.Info("Will not ping connections in pool")
@@ -529,10 +529,10 @@ func main() {
 
   // remote side
   remoteConnections = make(map[uint64]Connection)
-  go protobufServer(*listenport)
+  go protobufServer(*listenPort)
   time.Sleep(5000 * time.Millisecond)
   // http proxy side
-  app = NewApp(Hijack, *listenport, *peerhost, *peerport, *poolinit, *poolcap, *pingpool)
+  app = NewApp(Hijack, *listenPort, *peerHost, *peerPort, *poolInit, *poolCap, *pingPool)
   defer func() { if app.ConnectionPool != nil { app.ConnectionPool.Release() } } ()
   log.Warn("Ready to serve")
   log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *proxyport), app))
