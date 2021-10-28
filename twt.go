@@ -39,7 +39,6 @@ type App struct {
   PeerPort int
   Ping bool
   DefaultRoute Handler
-  ConnectionPoolMutex sync.Mutex
   ConnectionPool pool.Pool
   LocalConnectionMutex sync.Mutex
   LastLocalConnection uint64
@@ -194,17 +193,13 @@ func sendProtobufToConn(conn net.Conn, message *ProxyComm) {
 }
 
 func sendProtobuf(message *ProxyComm) {
-  app.ConnectionPoolMutex.Lock()
   v, err := app.ConnectionPool.Get()
-  app.ConnectionPoolMutex.Unlock()
   if err != nil {
     log.Fatalf("Error getting connection from pool: %v", err)
   }
   log.Tracef("Current conn pool len: %d\n", app.ConnectionPool.Len())
   sendProtobufToConn(v.(net.Conn), message)
-  app.ConnectionPoolMutex.Lock()
   app.ConnectionPool.Put(v)
-  app.ConnectionPoolMutex.Unlock()
   log.Tracef("Current conn pool len: %d\n", app.ConnectionPool.Len())
 }
 
