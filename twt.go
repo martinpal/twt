@@ -37,6 +37,7 @@ type App struct {
   ListenPort int
   PeerHost string
   PeerPort int
+  Ping bool
   DefaultRoute Handler
   ConnectionPoolMutex sync.Mutex
   ConnectionPool pool.Pool
@@ -45,43 +46,43 @@ type App struct {
   LocalConnections map[uint64]Connection
 }
 
-func NewApp(f Handler, listenport int, peerhost string, peerport int, poolinit int, poolcap int) *App {
+func NewApp(f Handler, listenport int, peerhost string, peerport int, poolinit int, poolcap int, ping bool) *App {
   app := &App{
     ListenPort: listenport,
     PeerHost: peerhost,
     PeerPort: peerport,
+    Ping: ping,
     DefaultRoute: f,
     LocalConnections: make(map[uint64]Connection),
   }
 
   log.Debug("Creating connection pool")
 
+  pingfunc := func(v interface{}) error { return nil }
+  if ping {
+    pingfunc = func(v interface{}) error {
+      pingmessage := &ProxyComm {
+        Mt: ProxyComm_PING,
+        Proxy: Proxyid,
+      }
+      sendProtobufToConn(v.(net.Conn), pingmessage)
+      return nil
+    }
+  }
   factory := func() (interface{}, error) {
     log.Tracef("Connecting to %s:%d", app.PeerHost, app.PeerPort)
     conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", app.PeerHost, app.PeerPort))
-//    pingmessage := &ProxyComm {
-//      Mt: ProxyComm_PING,
-//      Proxy: Proxyid,
-//    }
-//    sendProtobufToConn(conn, pingmessage)
+    pingfunc(conn)
     return conn, err
   }
   close := func(v interface{}) error { return v.(net.Conn).Close() }
-//  ping := func(v interface{}) error {
-//    pingmessage := &ProxyComm {
-//      Mt: ProxyComm_PING,
-//      Proxy: Proxyid,
-//    }
-//    sendProtobufToConn(v.(net.Conn), pingmessage)
-//    return nil
-//  }
   poolConfig := &pool.Config{
     InitialCap: poolinit,
     MaxIdle:    poolcap,
     MaxCap:     poolcap,
     Factory:    factory,
     Close:      close,
-//    Ping:       ping,
+    Ping:       pingfunc,
     IdleTimeout: 15 * 60 * time.Second,
   }
   p, err := pool.NewChannelPool(poolConfig)
@@ -519,6 +520,7 @@ func main() {
   listenport := flag.Int("b", 33333, "Our protobuf port to listen on")
   poolinit   := flag.Int("i", 100, "Initial size of the connection pool between the ends of tunnel")
   poolcap    := flag.Int("c", 500, "Cap of the connection pool size")
+  pingpool   := flag.Bool("ping", false, "To ping or not to ping on the connection pool connections")
   flag.Parse()
   setLogLevel(logLevel)
   log.Infof("Proxy port %d\n", *proxyport)
@@ -526,13 +528,18 @@ func main() {
   log.Infof("Listening port %d\n", *listenport)
   log.Infof("Initial pool size %d\n", *poolinit)
   log.Infof("Maximum pool size %d\n", *poolcap)
+  if *pingpool {
+    log.Info("Will ping connections in pool")
+  } else {
+    log.Info("Will not ping connections in pool")
+  }
 
   // remote side
   remoteConnections = make(map[uint64]Connection)
   go protobufServer(*listenport)
   time.Sleep(5000 * time.Millisecond)
   // http proxy side
-  app = NewApp(Hijack, *listenport, *peerhost, *peerport, *poolinit, *poolcap)
+  app = NewApp(Hijack, *listenport, *peerhost, *peerport, *poolinit, *poolcap, *pingpool)
   defer func() { if app.ConnectionPool != nil { app.ConnectionPool.Release() } } ()
   log.Warn("Ready to serve")
   log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *proxyport), app))
