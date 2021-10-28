@@ -86,7 +86,7 @@ func NewApp(f Handler, listenPort int, peerHost string, peerPort int, poolInit i
     Factory:    factory,
     Close:      close,
     Ping:       pingFunc,
-    IdleTimeout: 15 * 60 * time.Second,
+//    IdleTimeout: 15 * 60 * time.Second,
   }
   p, err := pool.NewChannelPool(poolConfig)
   if err != nil {
