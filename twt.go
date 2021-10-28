@@ -440,9 +440,6 @@ func handleRemoteSideConnection(conn net.Conn, connId uint64) {
     remoteConnections[connId] = connRecord
     remoteConnectionMutex.Unlock()
     log.Tracef("%s", hex.Dump(b[:n]))
-    if n == 7 || n == 8 || n == 9 {
-      log.Fatalf("Suspect message %s", hex.Dump(b[:n]))
-    }
     dataMessage := &ProxyComm {
       Mt: ProxyComm_DATA_DOWN,
       Proxy: Proxyid,
