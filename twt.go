@@ -298,6 +298,12 @@ func handleProxycommMessage(message *ProxyComm) {
       }
       log.Tracef("Seq UP %d %d", message.Seq, thisConnection.NextSeqOut)
       if message.Seq != thisConnection.NextSeqOut {
+        if message.Mt == ProxyComm_CLOSE_CONN_S {
+          log.Tracef("Out of order processing of %v message for connection %d seq %d", message.Mt, message.Connection, message.Seq)
+          closeConnectionRemote(message)
+          mutex.Unlock()
+          return
+        }
         log.Tracef("Queueing message UP conn %d seq %d", message.Connection, message.Seq)
         thisConnection.MessageQueue[message.Seq] = *message
         mutex.Unlock()
