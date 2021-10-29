@@ -506,7 +506,11 @@ func stats() {
   if app.ConnectionPool != nil {
     log.Infof("Connection pool length: %d", app.ConnectionPool.Len())
   }
+  app.LocalConnectionMutex.Lock()
+  remoteConnectionMutex.Lock()
   log.Infof("Local connection: %4d, Remote connections: %4d", len(app.LocalConnections), len(remoteConnections))
+  remoteConnectionMutex.Unlock()
+  app.LocalConnectionMutex.Unlock()
 }
 
 func main() {
