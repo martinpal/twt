@@ -147,6 +147,7 @@ func Hijack (w http.ResponseWriter, r *http.Request) {
       connRecord := app.LocalConnections[thisConnection]
       connRecord.LastSeqIn++
       app.LocalConnections[thisConnection] = connRecord
+      delete(app.LocalConnections, thisConnection)
       app.LocalConnectionMutex.Unlock()
       closeMessage := &ProxyComm {
         Mt: ProxyComm_CLOSE_CONN_S,
