@@ -418,8 +418,7 @@ func handleRemoteSideConnection(conn net.Conn, connId uint64) {
           return
         }
         seq := connRecord.LastSeqIn
-        connRecord.LastSeqIn++
-        remoteConnections[connId] = connRecord
+        delete(remoteConnections, connId)
         remoteConnectionMutex.Unlock()
         closeMessage := &ProxyComm {
           Mt: ProxyComm_CLOSE_CONN_C,
@@ -431,6 +430,10 @@ func handleRemoteSideConnection(conn net.Conn, connId uint64) {
         return
       }
       log.Tracef("Error reading remote connection %d: %v, exiting goroutine", connId, err)
+      remoteConnectionMutex.Lock()
+      delete(remoteConnections, connId)
+      remoteConnectionMutex.Unlock()
+      conn.Close()
       return
     }
     log.Tracef("Sending data from remote connection %4d downward, length %5d", connId, n)
