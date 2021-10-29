@@ -97,7 +97,7 @@ func NewApp(f Handler, listenPort int, peerHost string, peerPort int, poolInit i
     return nil
   }
   app.ConnectionPool = p
-  log.Debugf("Current conn pool len: %d\n", app.ConnectionPool.Len())
+  log.Debugf("Current conn pool length: %d\n", app.ConnectionPool.Len())
 
   return app
 }
@@ -202,10 +202,12 @@ func sendProtobuf(message *ProxyComm) {
   if err != nil {
     log.Fatalf("Error getting connection from pool: %v", err)
   }
-  log.Tracef("Current conn pool len: %d\n", app.ConnectionPool.Len())
+  log.Tracef("Got connection endpoint: %s", v.(net.Conn).LocalAddr().String())
+  log.Tracef("Current conn pool length: %d\n", app.ConnectionPool.Len())
   sendProtobufToConn(v.(net.Conn), message)
-  app.ConnectionPool.Put(v)
-  log.Tracef("Current conn pool len: %d\n", app.ConnectionPool.Len())
+  log.Tracef("Returning connection endpoint: %s", v.(net.Conn).LocalAddr().String())
+  time.AfterFunc(50 * time.Millisecond, func() { app.ConnectionPool.Put(v) })
+  log.Tracef("Current conn pool length: %d\n", app.ConnectionPool.Len())
 }
 
 // protobuf server
@@ -251,7 +253,6 @@ func handleConnection(conn net.Conn) {
       log.Errorf("Error receiving protobuf message, expected %4d, got %4d", length, len(B))
     }
   }
-  return
 }
 
 func handleProxycommMessage(message *ProxyComm) {
@@ -387,7 +388,6 @@ func backwardDataChunk(message *ProxyComm) {
     return
   }
   log.Debugf("Succesfully forwarded data chunk downward for connection %4d, seq %8d, length %5d, sent %5d", message.Connection, message.Seq, len(message.Data), n)
-  app.LocalConnections[message.Connection] = thisConnection
 }
 
 func forwardDataChunk(message *ProxyComm) {
@@ -397,15 +397,15 @@ func forwardDataChunk(message *ProxyComm) {
   n, err := thisConnection.Connection.Write(message.Data)
   if err != nil {
     log.Debugf("Error forwarding data chunk   upward for connection %4d, seq %8d, length %5d, %v", message.Connection, message.Seq, len(message.Data), err)
+    return
   }
   log.Debugf("Succesfully forwarded data chunk   upward for connection %4d, seq %8d, length %5d, sent %5d", message.Connection, message.Seq, len(message.Data), n)
-  remoteConnections[message.Connection] = thisConnection
 }
 
 func handleRemoteSideConnection(conn net.Conn, connId uint64) {
   log.Infof("Starting remote side connection handler for connection %d", connId)
+  b := make([]byte, ChunkSize)
   for {
-    b := make([]byte, ChunkSize)
     n, err := conn.Read(b)
     if err != nil {
       if err == io.EOF {
