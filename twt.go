@@ -501,6 +501,14 @@ func setLogLevel(logLevel *int) {
   }
 }
 
+func stats() {
+  time.AfterFunc(5 * time.Second, stats)
+  if app.ConnectionPool != nil {
+    log.Infof("Connection pool length: %d", app.ConnectionPool.Len())
+  }
+  log.Infof("Local connection: %4d, Remote connections: %4d", len(app.LocalConnections), len(remoteConnections))
+}
+
 func main() {
   // log.SetFormatter(&log.JSONFormatter{})
   log.SetReportCaller(true)
@@ -540,5 +548,6 @@ func main() {
   app = NewApp(Hijack, *listenPort, *peerHost, *peerPort, *poolInit, *poolCap, *pingPool)
   defer func() { if app.ConnectionPool != nil { app.ConnectionPool.Release() } } ()
   log.Warn("Ready to serve")
+  go stats()
   log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", *proxyport), app))
 }
