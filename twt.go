@@ -377,16 +377,22 @@ func newConnection(message *ProxyComm) {
 
 func closeConnectionRemote(message *ProxyComm) {
   log.Debugf("Closing remote connection %4d", message.Connection)
-  conn := remoteConnections[message.Connection].Connection
-  delete(remoteConnections, message.Connection)
-  time.AfterFunc(1 * time.Second, func() { conn.Close() })
+  connRecord, ok := remoteConnections[message.Connection]
+  if ok {
+    conn := connRecord.Connection
+    delete(remoteConnections, message.Connection)
+    time.AfterFunc(1 * time.Second, func() { if conn != nil { conn.Close() }})
+  }
 }
 
 func closeConnectionLocal(message *ProxyComm) {
   log.Debugf("Closing local connection %4d", message.Connection)
-  conn := app.LocalConnections[message.Connection].Connection
-  delete(app.LocalConnections, message.Connection)
-  time.AfterFunc(1 * time.Second, func() { conn.Close() })
+  connRecord, ok := app.LocalConnections[message.Connection]
+  if ok {
+    conn := connRecord.Connection
+    delete(app.LocalConnections, message.Connection)
+    time.AfterFunc(1 * time.Second, func() { conn.Close() })
+  }
 }
 
 func backwardDataChunk(message *ProxyComm) {
@@ -515,14 +521,16 @@ func setLogLevel(logLevel *int) {
 
 func stats() {
   time.AfterFunc(5 * time.Second, stats)
-  if app.ConnectionPool != nil {
-    log.Infof("Connection pool length: %d", app.ConnectionPool.Len())
+  if app != nil {
+    if app.ConnectionPool != nil {
+      log.Infof("Connection pool length: %d", app.ConnectionPool.Len())
+    }
+    app.LocalConnectionMutex.Lock()
+    remoteConnectionMutex.Lock()
+    log.Infof("Local connection: %4d, Remote connections: %4d", len(app.LocalConnections), len(remoteConnections))
+    remoteConnectionMutex.Unlock()
+    app.LocalConnectionMutex.Unlock()
   }
-  app.LocalConnectionMutex.Lock()
-  remoteConnectionMutex.Lock()
-  log.Infof("Local connection: %4d, Remote connections: %4d", len(app.LocalConnections), len(remoteConnections))
-  remoteConnectionMutex.Unlock()
-  app.LocalConnectionMutex.Unlock()
 }
 
 func main() {
