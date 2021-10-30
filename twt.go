@@ -19,8 +19,8 @@ import (
   "time"
 )
 
-const Proxyid = 0
-const ChunkSize = 1280
+const proxyID = 0
+const chunkSize = 1280
 
 var app *App
 
@@ -65,7 +65,7 @@ func NewApp(f Handler, listenPort int, peerHost string, peerPort int, poolInit i
     pingFunc = func(v interface{}) error {
       pingMessage := &ProxyComm {
         Mt: ProxyComm_PING,
-        Proxy: Proxyid,
+        Proxy: proxyID,
       }
       sendProtobufToConn(v.(net.Conn), pingMessage)
       return nil
@@ -133,7 +133,7 @@ func Hijack (w http.ResponseWriter, r *http.Request) {
 
   connectMessage := &ProxyComm {
     Mt: ProxyComm_OPEN_CONN,
-    Proxy: Proxyid,
+    Proxy: proxyID,
     Connection: thisConnection,
     Seq: 0,
     Address: host,
@@ -142,7 +142,7 @@ func Hijack (w http.ResponseWriter, r *http.Request) {
   sendProtobuf(connectMessage)
 
   for {
-    b := make([]byte, ChunkSize)
+    b := make([]byte, chunkSize)
     n, err := bufrw.Read(b)
     if err != nil {
       log.Infof("Error reading local connection: %v, going to send CLOSE_CONN_S message to remote end", err)
@@ -154,7 +154,7 @@ func Hijack (w http.ResponseWriter, r *http.Request) {
       app.LocalConnectionMutex.Unlock()
       closeMessage := &ProxyComm {
         Mt: ProxyComm_CLOSE_CONN_S,
-        Proxy: Proxyid,
+        Proxy: proxyID,
         Connection: thisConnection,
         Seq: connRecord.LastSeqIn,
       }
@@ -171,7 +171,7 @@ func Hijack (w http.ResponseWriter, r *http.Request) {
       app.LocalConnectionMutex.Unlock()
       dataMessage := &ProxyComm {
         Mt: ProxyComm_DATA_UP,
-        Proxy: Proxyid,
+        Proxy: proxyID,
         Connection: thisConnection,
         Seq: connRecord.LastSeqIn,
         Data: b[:n],
@@ -415,52 +415,52 @@ func forwardDataChunk(message *ProxyComm) {
   log.Debugf("Succesfully forwarded data chunk   upward for connection %4d, seq %8d, length %5d, sent %5d", message.Connection, message.Seq, len(message.Data), n)
 }
 
-func handleRemoteSideConnection(conn net.Conn, connId uint64) {
-  log.Infof("Starting remote side connection handler for connection %d", connId)
-  b := make([]byte, ChunkSize)
+func handleRemoteSideConnection(conn net.Conn, connID uint64) {
+  log.Infof("Starting remote side connection handler for connection %d", connID)
+  b := make([]byte, chunkSize)
   for {
     n, err := conn.Read(b)
     if err != nil {
       if err == io.EOF {
-        log.Infof("Error reading remote connection %d: %v", connId, err)
+        log.Infof("Error reading remote connection %d: %v", connID, err)
         app.remoteConnectionMutex.Lock()
-        connRecord, ok := app.remoteConnections[connId]
+        connRecord, ok := app.remoteConnections[connID]
         if ! ok {
-          log.Tracef("Connection %d was already closed and removed earlier, exiting goroutine", connId)
+          log.Tracef("Connection %d was already closed and removed earlier, exiting goroutine", connID)
           app.remoteConnectionMutex.Unlock()
           return
         }
         seq := connRecord.LastSeqIn
-        delete(app.remoteConnections, connId)
+        delete(app.remoteConnections, connID)
         app.remoteConnectionMutex.Unlock()
         closeMessage := &ProxyComm {
           Mt: ProxyComm_CLOSE_CONN_C,
-          Proxy: Proxyid,
-          Connection: connId,
+          Proxy: proxyID,
+          Connection: connID,
           Seq: seq,
         }
         sendProtobuf(closeMessage)
         return
       }
-      log.Tracef("Error reading remote connection %d: %v, exiting goroutine", connId, err)
+      log.Tracef("Error reading remote connection %d: %v, exiting goroutine", connID, err)
       app.remoteConnectionMutex.Lock()
-      delete(app.remoteConnections, connId)
+      delete(app.remoteConnections, connID)
       app.remoteConnectionMutex.Unlock()
       conn.Close()
       return
     }
-    log.Tracef("Sending data from remote connection %4d downward, length %5d", connId, n)
+    log.Tracef("Sending data from remote connection %4d downward, length %5d", connID, n)
     app.remoteConnectionMutex.Lock()
-    connRecord := app.remoteConnections[connId]
+    connRecord := app.remoteConnections[connID]
     seq := connRecord.LastSeqIn
     connRecord.LastSeqIn++
-    app.remoteConnections[connId] = connRecord
+    app.remoteConnections[connID] = connRecord
     app.remoteConnectionMutex.Unlock()
     log.Tracef("%s", hex.Dump(b[:n]))
     dataMessage := &ProxyComm {
       Mt: ProxyComm_DATA_DOWN,
-      Proxy: Proxyid,
-      Connection: connId,
+      Proxy: proxyID,
+      Connection: connID,
       Seq: seq,
       Data: b[:n],
     }
