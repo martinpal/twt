@@ -43,8 +43,8 @@ type App struct {
   LocalConnectionMutex sync.Mutex
   LastLocalConnection uint64
   LocalConnections map[uint64]Connection
-  remoteConnectionMutex sync.Mutex
-  remoteConnections map[uint64]Connection
+  RemoteConnectionMutex sync.Mutex
+  RemoteConnections map[uint64]Connection
 }
 
 func NewApp(f Handler, listenPort int, peerHost string, peerPort int, poolInit int, poolCap int, ping bool) *App {
@@ -55,7 +55,7 @@ func NewApp(f Handler, listenPort int, peerHost string, peerPort int, poolInit i
     Ping: ping,
     DefaultRoute: f,
     LocalConnections: make(map[uint64]Connection),
-    remoteConnections: make(map[uint64]Connection),
+    RemoteConnections: make(map[uint64]Connection),
   }
 
   log.Debug("Creating connection pool")
@@ -267,8 +267,8 @@ func handleProxycommMessage(message *ProxyComm) {
   var connections *map[uint64]Connection
   switch message.Mt {
     case ProxyComm_OPEN_CONN:
-      mutex = &app.remoteConnectionMutex
-      connections = &app.remoteConnections
+      mutex = &app.RemoteConnectionMutex
+      connections = &app.RemoteConnections
       mutex.Lock()
     case ProxyComm_CLOSE_CONN_C, ProxyComm_DATA_DOWN:
       mutex = &app.LocalConnectionMutex
@@ -288,14 +288,14 @@ func handleProxycommMessage(message *ProxyComm) {
         return
       }
     case ProxyComm_CLOSE_CONN_S, ProxyComm_DATA_UP:
-      mutex = &app.remoteConnectionMutex
-      connections = &app.remoteConnections
+      mutex = &app.RemoteConnectionMutex
+      connections = &app.RemoteConnections
       mutex.Lock()
-      thisConnection, ok := app.remoteConnections[message.Connection]
+      thisConnection, ok := app.RemoteConnections[message.Connection]
       if ! ok {
         log.Tracef("No such connection %d, seq %d, adding", message.Connection, message.Seq)
-        app.remoteConnections[message.Connection] = Connection { Connection: nil, LastSeqIn: 0, NextSeqOut: 0, MessageQueue: make(map[uint64]ProxyComm) }
-        thisConnection, _ = app.remoteConnections[message.Connection]
+        app.RemoteConnections[message.Connection] = Connection { Connection: nil, LastSeqIn: 0, NextSeqOut: 0, MessageQueue: make(map[uint64]ProxyComm) }
+        thisConnection, _ = app.RemoteConnections[message.Connection]
       }
       log.Tracef("Seq UP %d %d", message.Seq, thisConnection.NextSeqOut)
       if message.Seq != thisConnection.NextSeqOut {
@@ -357,25 +357,25 @@ func newConnection(message *ProxyComm) {
     log.Fatal(err)
     return
   }
-  thisConnection, ok := app.remoteConnections[message.Connection]
+  thisConnection, ok := app.RemoteConnections[message.Connection]
   if ! ok {
     log.Tracef("Connection %4d not known, creating record", message.Connection)
-    app.remoteConnections[message.Connection] = Connection { Connection: conn, LastSeqIn: 0, NextSeqOut: 1, MessageQueue: make(map[uint64]ProxyComm) }
+    app.RemoteConnections[message.Connection] = Connection { Connection: conn, LastSeqIn: 0, NextSeqOut: 1, MessageQueue: make(map[uint64]ProxyComm) }
   } else {
     log.Tracef("Connection %4d record already exists, setting conn field to newly dialed connection", message.Connection)
     thisConnection.Connection = conn
     thisConnection.NextSeqOut = 1
-    app.remoteConnections[message.Connection] = thisConnection
+    app.RemoteConnections[message.Connection] = thisConnection
   }
   go handleRemoteSideConnection(conn, message.Connection)
 }
 
 func closeConnectionRemote(message *ProxyComm) {
   log.Debugf("Closing remote connection %4d", message.Connection)
-  connRecord, ok := app.remoteConnections[message.Connection]
+  connRecord, ok := app.RemoteConnections[message.Connection]
   if ok {
     conn := connRecord.Connection
-    delete(app.remoteConnections, message.Connection)
+    delete(app.RemoteConnections, message.Connection)
     time.AfterFunc(1 * time.Second, func() { if conn != nil { conn.Close() }})
   }
 }
@@ -404,9 +404,9 @@ func backwardDataChunk(message *ProxyComm) {
 }
 
 func forwardDataChunk(message *ProxyComm) {
-  thisConnection := app.remoteConnections[message.Connection]
+  thisConnection := app.RemoteConnections[message.Connection]
   thisConnection.NextSeqOut++
-  app.remoteConnections[message.Connection] = thisConnection
+  app.RemoteConnections[message.Connection] = thisConnection
   n, err := thisConnection.Connection.Write(message.Data)
   if err != nil {
     log.Debugf("Error forwarding data chunk   upward for connection %4d, seq %8d, length %5d, %v", message.Connection, message.Seq, len(message.Data), err)
@@ -423,16 +423,16 @@ func handleRemoteSideConnection(conn net.Conn, connID uint64) {
     if err != nil {
       if err == io.EOF {
         log.Infof("Error reading remote connection %d: %v", connID, err)
-        app.remoteConnectionMutex.Lock()
-        connRecord, ok := app.remoteConnections[connID]
+        app.RemoteConnectionMutex.Lock()
+        connRecord, ok := app.RemoteConnections[connID]
         if ! ok {
           log.Tracef("Connection %d was already closed and removed earlier, exiting goroutine", connID)
-          app.remoteConnectionMutex.Unlock()
+          app.RemoteConnectionMutex.Unlock()
           return
         }
         seq := connRecord.LastSeqIn
-        delete(app.remoteConnections, connID)
-        app.remoteConnectionMutex.Unlock()
+        delete(app.RemoteConnections, connID)
+        app.RemoteConnectionMutex.Unlock()
         closeMessage := &ProxyComm {
           Mt: ProxyComm_CLOSE_CONN_C,
           Proxy: proxyID,
@@ -443,20 +443,20 @@ func handleRemoteSideConnection(conn net.Conn, connID uint64) {
         return
       }
       log.Tracef("Error reading remote connection %d: %v, exiting goroutine", connID, err)
-      app.remoteConnectionMutex.Lock()
-      delete(app.remoteConnections, connID)
-      app.remoteConnectionMutex.Unlock()
+      app.RemoteConnectionMutex.Lock()
+      delete(app.RemoteConnections, connID)
+      app.RemoteConnectionMutex.Unlock()
       conn.Close()
       return
     }
     log.Tracef("Sending data from remote connection %4d downward, length %5d", connID, n)
-    app.remoteConnectionMutex.Lock()
-    connRecord := app.remoteConnections[connID]
+    app.RemoteConnectionMutex.Lock()
+    connRecord := app.RemoteConnections[connID]
     seq := connRecord.LastSeqIn
     connRecord.LastSeqIn++
-    app.remoteConnections[connID] = connRecord
-    app.remoteConnectionMutex.Unlock()
-    log.Tracef("%s", hex.Dump(b[:n]))
+    app.RemoteConnections[connID] = connRecord
+    app.RemoteConnectionMutex.Unlock()
+//    log.Tracef("%s", hex.Dump(b[:n]))
     dataMessage := &ProxyComm {
       Mt: ProxyComm_DATA_DOWN,
       Proxy: proxyID,
@@ -510,7 +510,7 @@ func setLogLevel(logLevel *int) {
     case 5:
       log.SetLevel(log.TraceLevel)
     default:
-      log.Fatalf("Invalid log leve %d", *logLevel)
+      log.Fatalf("Invalid log level %d", *logLevel)
   }
 }
 
@@ -521,9 +521,9 @@ func stats() {
       log.Infof("Connection pool length: %d", app.ConnectionPool.Len())
     }
     app.LocalConnectionMutex.Lock()
-    app.remoteConnectionMutex.Lock()
-    log.Infof("Local connection: %4d, Remote connections: %4d", len(app.LocalConnections), len(app.remoteConnections))
-    app.remoteConnectionMutex.Unlock()
+    app.RemoteConnectionMutex.Lock()
+    log.Infof("Local connection: %4d, Remote connections: %4d", len(app.LocalConnections), len(app.RemoteConnections))
+    app.RemoteConnectionMutex.Unlock()
     app.LocalConnectionMutex.Unlock()
   }
 }
